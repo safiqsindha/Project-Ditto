@@ -10,3 +10,6 @@ build/
 data/reference_dist.pkl
 results/raw/
 results/blinded/
+# Generated chain data — reproduce with scripts/build_chains.py
+chains/real/*.jsonl
+chains/shuffled/*.jsonl
