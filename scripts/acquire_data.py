@@ -40,6 +40,7 @@ def acquire_from_huggingface(out_dir: Path, target: int = 2500, hf_token: str | 
     out_dir.mkdir(parents=True, exist_ok=True)
     kept = 0
     seen = 0
+    chunk = 0
     batch: list[dict] = []
 
     for record in ds:
@@ -60,8 +61,9 @@ def acquire_from_huggingface(out_dir: Path, target: int = 2500, hf_token: str | 
         })
         kept += 1
 
-        if kept % 1000 == 0:
-            _flush_batch(batch, out_dir, kept // 1000)
+        if len(batch) >= 1000:
+            chunk += 1
+            _flush_batch(batch, out_dir, chunk)
             batch = []
             print(f"  Kept {kept} / scanned {seen}")
 
@@ -69,7 +71,8 @@ def acquire_from_huggingface(out_dir: Path, target: int = 2500, hf_token: str | 
             break
 
     if batch:
-        _flush_batch(batch, out_dir, (kept // 1000) + 1)
+        chunk += 1
+        _flush_batch(batch, out_dir, chunk)
 
     print(f"Done. Kept {kept} matches from {seen} scanned.")
     return kept
@@ -80,6 +83,7 @@ def acquire_from_pokechamp(pokechamp_dir: Path, out_dir: Path, target: int = 250
     out_dir.mkdir(parents=True, exist_ok=True)
     kept = 0
     seen = 0
+    chunk = 0
     batch: list[dict] = []
 
     for log_file in sorted(pokechamp_dir.rglob("*.log")):
@@ -101,8 +105,9 @@ def acquire_from_pokechamp(pokechamp_dir: Path, out_dir: Path, target: int = 250
         })
         kept += 1
 
-        if kept % 1000 == 0:
-            _flush_batch(batch, out_dir, kept // 1000)
+        if len(batch) >= 1000:
+            chunk += 1
+            _flush_batch(batch, out_dir, chunk)
             batch = []
             print(f"  Kept {kept} / scanned {seen}")
 
@@ -110,7 +115,8 @@ def acquire_from_pokechamp(pokechamp_dir: Path, out_dir: Path, target: int = 250
             break
 
     if batch:
-        _flush_batch(batch, out_dir, (kept // 1000) + 1)
+        chunk += 1
+        _flush_batch(batch, out_dir, chunk)
 
     print(f"Done. Kept {kept} matches from {seen} scanned.")
     return kept

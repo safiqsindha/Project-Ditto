@@ -1,0 +1,7 @@
+source: synthetic
+generator: scripts/generate_synthetic_data.py
+n: 2500
+date: 2026-04-21
+note: Generated offline with no internet access. Real data requires running:
+  python scripts/acquire_data.py --source huggingface --out data/raw/ --target 2500
+WARNING: Do NOT use these for publication-quality evaluation. Pass --allow-synthetic to runner.py to bypass this check during development.

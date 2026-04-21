@@ -16,13 +16,23 @@ from typing import Any
 from src.translation import Constraint
 
 
-def _get_timestamps(constraints: list[Constraint]) -> list[int]:
-    """Extract ordered timestamps from the original chain."""
-    return [getattr(c, "timestamp", 0) for c in constraints]
+def _get_timestamps(constraints: list) -> list[int]:
+    """Extract ordered timestamps from the original chain (handles both dicts and dataclasses)."""
+    result = []
+    for c in constraints:
+        if isinstance(c, dict):
+            result.append(c.get("timestamp", 0))
+        else:
+            result.append(getattr(c, "timestamp", 0))
+    return result
 
 
-def _set_timestamp(constraint: Constraint, ts: int) -> Constraint:
-    """Return a shallow copy of the constraint with the timestamp replaced."""
+def _set_timestamp(constraint, ts: int):
+    """Return a copy of the constraint with the timestamp replaced (handles both formats)."""
+    if isinstance(constraint, dict):
+        new = dict(constraint)
+        new["timestamp"] = ts
+        return new
     d = dataclasses.asdict(constraint)
     d["timestamp"] = ts
     return type(constraint)(**d)

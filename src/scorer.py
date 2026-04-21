@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import math
-import pickle
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +24,9 @@ from typing import Any
 
 import numpy as np
 from scipy import stats
+
+from src.normalize import normalize_action
+from src.reference import ReferenceDistribution, extract_state_signature
 
 
 # ---------------------------------------------------------------------------
@@ -55,11 +57,14 @@ def score_layer1(
     if not reference_dist:
         return {"top_k_match": None, "probability_mass": None, "reference_entropy": None}
 
-    sorted_actions = sorted(reference_dist, key=reference_dist.get, reverse=True)
+    norm_action = normalize_action(model_action)
+    norm_dist = {normalize_action(a): p for a, p in reference_dist.items()}
+
+    sorted_actions = sorted(norm_dist, key=norm_dist.get, reverse=True)
     top_k_actions = sorted_actions[:k]
 
-    top_k_match = 1 if model_action in top_k_actions else 0
-    prob_mass = reference_dist.get(model_action, 0.0)
+    top_k_match = 1 if norm_action in top_k_actions else 0
+    prob_mass = norm_dist.get(norm_action, 0.0)
 
     # Entropy of reference distribution (diagnostic)
     probs = list(reference_dist.values())
@@ -111,21 +116,23 @@ def score_layer2(
 
     # Check legality: if model_action mentions an unavailable unit, it's illegal
     legality = 1.0
-    action_lower = model_action.lower()
-    for unit in unavailable_units:
-        if unit.lower() in action_lower:
+    norm_action = normalize_action(model_action)
+    unavailable_norm = {u.lower() for u in unavailable_units}
+    for unit in unavailable_norm:
+        if unit in norm_action:
             legality = 0.0
             break
 
     # Optimality proxy among legal actions
+    norm_ref = {normalize_action(a): p for a, p in reference_dist.items()}
     legal_dist = {
-        a: p for a, p in reference_dist.items()
-        if not any(u.lower() in a.lower() for u in unavailable_units)
+        a: p for a, p in norm_ref.items()
+        if not any(u in a for u in unavailable_norm)
     }
     total_legal_mass = sum(legal_dist.values())
     if total_legal_mass > 0 and legal_dist:
         legal_dist_normalised = {a: p / total_legal_mass for a, p in legal_dist.items()}
-        optimality_proxy = legal_dist_normalised.get(model_action, 0.0)
+        optimality_proxy = legal_dist_normalised.get(norm_action, 0.0)
     else:
         optimality_proxy = 0.0
 
@@ -283,9 +290,9 @@ def score_all(
 
     Returns a comprehensive results dict suitable for JSON serialisation.
     """
-    # Load reference distribution
-    with open(dist_path, "rb") as f:
-        ref_dist = pickle.load(f)
+    # Load reference distribution (must use ReferenceDistribution.load, NOT pickle.load
+    # directly — the pickle file stores a payload dict, not the object itself)
+    ref_dist = ReferenceDistribution.load(dist_path)
 
     # Load all raw results
     results: list[dict] = []
@@ -327,15 +334,13 @@ def score_all(
             continue
 
         # Get reference distribution for this step
+        dist: dict[str, float] = {}
         try:
-            from src.reference import ReferenceDistribution, extract_state_signature
             sig = extract_state_signature(chain, cutoff_k)
             if sig is not None:
-                top_k, dist, backoff = ref_dist.lookup(sig)
-            else:
-                dist = {}
-        except Exception:
-            dist = {}
+                _top_k, dist, _backoff = ref_dist.lookup(sig)
+        except (KeyError, AttributeError, TypeError) as exc:
+            print(f"[scorer] lookup failed for chain_id={chain_id}: {exc}")
 
         # Layer 1
         l1 = score_layer1(model_action, dist)

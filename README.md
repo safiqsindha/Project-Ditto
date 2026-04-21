@@ -14,9 +14,9 @@ pip install -r requirements.txt
 # Generate synthetic data (no internet needed)
 python scripts/generate_synthetic_data.py --n 2500 --out data/raw/
 
-# Build chains + reference distribution
+# Build chains + reference distribution (from raw logs — works without chains)
 python scripts/build_chains.py --data data/raw/ --out-real chains/real/ --out-shuffled chains/shuffled/
-python scripts/build_reference.py build --chains chains/real/ --out data/reference_dist.pkl
+python scripts/build_reference.py build-raw --raw data/raw/ --out data/reference_dist.pkl
 
 # Dry-run evaluation (no API key needed)
 python -m src.runner --model haiku --chains chains/real/ --seed 42 --dry-run --n 5

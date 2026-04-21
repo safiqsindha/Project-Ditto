@@ -33,6 +33,7 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
+from src.normalize import normalize_action
 from src.parser import constraint_events, filter_match, parse_showdown_log
 from src.reference import (
     ReferenceDistribution,
@@ -165,13 +166,16 @@ def _extract_observations_from_match(
                         focal_action = f"switch to {incoming_label}"
 
         if sig is not None and focal_action is not None:
-            results.append((sig, focal_action))
+            results.append((sig, normalize_action(focal_action)))
 
         # ------------------------------------------------------------------
         # Translate all events to update running state for next turn
         # ------------------------------------------------------------------
         for evt in evts:
-            cs = translate_event(evt, ctx)
+            try:
+                cs = translate_event(evt, ctx)
+            except ValueError:
+                return results  # too many distinct Pokémon; discard match
             for c in cs:
                 if isinstance(c, ResourceBudget):
                     resource = c.resource

@@ -159,6 +159,15 @@ def run_evaluation(
     """
     load_dotenv()
 
+    import os
+    if not dry_run and not os.environ.get("ANTHROPIC_API_KEY"):
+        print(
+            "[runner] ERROR: ANTHROPIC_API_KEY is not set.\n"
+            "  Add it to .env (see .env.example) or export it before running.\n"
+            "  Use --dry-run to test without an API key."
+        )
+        raise SystemExit(1)
+
     if model_name not in MODELS:
         raise ValueError(
             f"Unknown model_name {model_name!r}. Choose from: {list(MODELS)}"
@@ -248,6 +257,30 @@ def run_evaluation(
     return result
 
 
+def _assert_real_data(allow_synthetic: bool = False) -> None:
+    """Raise SystemExit if data/raw/SOURCE.txt is missing or marks synthetic data."""
+    source_file = Path("data/raw/SOURCE.txt")
+    if not source_file.exists():
+        if allow_synthetic:
+            print("[runner] WARNING: data/raw/SOURCE.txt not found (--allow-synthetic bypasses check).")
+            return
+        print(
+            "[runner] ERROR: data/raw/SOURCE.txt not found.\n"
+            "  Create this file with the data source before running evaluations.\n"
+            "  Use --allow-synthetic to bypass if you intentionally use synthetic data."
+        )
+        raise SystemExit(1)
+
+    content = source_file.read_text().strip().lower()
+    if "synthetic" in content and not allow_synthetic:
+        print(
+            f"[runner] ERROR: data/raw/SOURCE.txt indicates synthetic data:\n"
+            f"  {source_file.read_text().strip()}\n"
+            "  Evaluations must use real data. Pass --allow-synthetic to override."
+        )
+        raise SystemExit(1)
+
+
 def run_all(
     chains_dir: Path,
     model_name: str,
@@ -255,6 +288,7 @@ def run_all(
     output_dir: Path = Path("results/raw"),
     dry_run: bool = False,
     n: int | None = None,
+    allow_synthetic: bool = False,
 ) -> list[dict]:
     """Run evaluations for every chain in *chains_dir* with the given model.
 
@@ -272,6 +306,9 @@ def run_all(
     Returns:
         List of result dicts, one per chain processed.
     """
+    if not dry_run:
+        _assert_real_data(allow_synthetic=allow_synthetic)
+
     random.seed(seed)
 
     chain_files = sorted(chains_dir.glob("*.jsonl"), key=lambda p: p.stem)
@@ -337,6 +374,11 @@ if __name__ == "__main__":
         default=Path("results/raw"),
         help="Directory to write raw results into (default: results/raw).",
     )
+    parser.add_argument(
+        "--allow-synthetic",
+        action="store_true",
+        help="Allow evaluations on synthetic data (skips SOURCE.txt check).",
+    )
 
     args = parser.parse_args()
 
@@ -347,6 +389,7 @@ if __name__ == "__main__":
         output_dir=args.output_dir,
         dry_run=args.dry_run,
         n=args.n,
+        allow_synthetic=args.allow_synthetic,
     )
 
     print(f"\n[runner] Completed {len(results)} evaluations.")

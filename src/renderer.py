@@ -6,7 +6,10 @@ NO Pokémon vocabulary is permitted in any output string.
 
 from __future__ import annotations
 
+import json
 import re
+from functools import lru_cache
+from pathlib import Path
 
 from src.translation import (
     Constraint,
@@ -73,6 +76,17 @@ def _render_optimization_criterion(c: OptimizationCriterion) -> str:
     )
 
 
+@lru_cache(maxsize=1)
+def _load_pokemon_names() -> frozenset[str]:
+    """Load the bundled Pokémon name list exactly once."""
+    data_path = Path(__file__).parent / "data" / "pokemon_names.json"
+    try:
+        names = json.loads(data_path.read_text(encoding="utf-8"))
+        return frozenset(names)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return frozenset()
+
+
 _RENDERERS = {
     ResourceBudget:          _render_resource_budget,
     ToolAvailability:        _render_tool_availability,
@@ -99,6 +113,8 @@ def render_chain(constraints: list[Constraint], perspective: str) -> str:
     """
     Render a list of constraints as numbered steps.
 
+    Raises ValueError if Pokémon vocabulary is detected in the output.
+
     Parameters
     ----------
     constraints : ordered list of Constraint objects
@@ -120,14 +136,26 @@ def render_chain(constraints: list[Constraint], perspective: str) -> str:
         lines.append(f"  {body}")
         step += 1
 
-    return "\n".join(lines) + "\n"
+    rendered = "\n".join(lines) + "\n"
+
+    leaked = check_pokemon_leakage(rendered)
+    if leaked:
+        raise ValueError(
+            f"Pokémon vocabulary detected in rendered chain: {leaked}. "
+            "Check translation.py for domain leakage."
+        )
+
+    return rendered
 
 
 # ---------------------------------------------------------------------------
 # Leakage checker
 # ---------------------------------------------------------------------------
 
-def check_pokemon_leakage(rendered: str, pokemon_names: set[str]) -> list[str]:
+def check_pokemon_leakage(
+    rendered: str,
+    pokemon_names: set[str] | frozenset[str] | None = None,
+) -> list[str]:
     """
     Return any Pokémon names found in the rendered output.
 
@@ -138,12 +166,16 @@ def check_pokemon_leakage(rendered: str, pokemon_names: set[str]) -> list[str]:
     Parameters
     ----------
     rendered       : string produced by render_chain()
-    pokemon_names  : set of known Pokémon species names to check for
+    pokemon_names  : set of known Pokémon species names to check for.
+                     Defaults to the bundled list from src/data/pokemon_names.json.
 
     Returns
     -------
     List of leaking names (empty list means no leakage).
     """
+    if pokemon_names is None:
+        pokemon_names = _load_pokemon_names()
+
     leaked: list[str] = []
     for name in pokemon_names:
         # Whole-word, case-insensitive search

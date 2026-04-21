@@ -395,10 +395,10 @@ class TestMove:
 
 class TestSidestart:
     @pytest.mark.parametrize("condition_raw,expected_dep", [
-        ("Stealth Rock", "hazard_entry_rock"),
-        ("Spikes",       "hazard_entry_spike"),
-        ("Sticky Web",   "hazard_entry_web"),
-        ("Toxic Spikes", "hazard_entry_toxic_spike"),
+        ("Stealth Rock", "hazard_type_A"),
+        ("Spikes",       "hazard_type_B"),
+        ("Sticky Web",   "hazard_type_C"),
+        ("Toxic Spikes", "hazard_type_D"),
     ])
     def test_hazard_emits_coordination_dependency(self, condition_raw, expected_dep):
         ctx = _ctx("p1")
@@ -433,10 +433,10 @@ class TestSidestart:
 
 class TestWeather:
     @pytest.mark.parametrize("weather_token,expected_obj_part,expected_shift_part", [
-        ("RainDance", "rain",  "water_amplify"),
-        ("SunnyDay",  "sun",   "fire_amplify"),
-        ("Sandstorm", "sand",  "rock_steel"),
-        ("Snow",      "snow",  "ice_buffer"),
+        ("RainDance", "rain", "weather_a"),
+        ("SunnyDay",  "sun",  "weather_b"),
+        ("Sandstorm", "sand", "weather_c"),
+        ("Snow",      "snow", "weather_d"),
     ])
     def test_weather_emits_optimization_criterion(self, weather_token, expected_obj_part, expected_shift_part):
         ctx = _ctx("p1")
@@ -464,11 +464,11 @@ class TestWeather:
 
 class TestFieldstart:
     @pytest.mark.parametrize("field_token,expected_obj_part,expected_shift_part", [
-        ("Electric Terrain", "electric",  "electric_amplify"),
-        ("Grassy Terrain",   "grassy",    "grass_amplify"),
-        ("Misty Terrain",    "misty",     "dragon_reduce"),
-        ("Psychic Terrain",  "psychic",   "psychic_amplify"),
-        ("Trick Room",       "trickroom", "speed_inversion"),
+        ("Electric Terrain", "electric",  "terrain_a"),
+        ("Grassy Terrain",   "grassy",    "terrain_b"),
+        ("Misty Terrain",    "misty",     "terrain_c"),
+        ("Psychic Terrain",  "psychic",   "terrain_d"),
+        ("Trick Room",       "trickroom", "terrain_e"),
     ])
     def test_field_emits_optimization_criterion(self, field_token, expected_obj_part, expected_shift_part):
         ctx = _ctx("p1")
@@ -611,8 +611,8 @@ class TestRenderer:
         assert "Garchomp" in leaked
 
     def test_check_pokemon_leakage_no_false_positive(self):
-        # "sand" is in Sandstorm's weight_shift descriptor but is not a Pokémon name
-        leaked = check_pokemon_leakage("weight_shift=rock_steel_ground_buffer", {"Sandslash"})
+        # Generic labels like "weather_C" or "terrain_A" should not leak Pokémon names
+        leaked = check_pokemon_leakage("weight_shift=weather_C terrain_A", {"Sandslash"})
         assert leaked == []
 
     def test_render_tool_availability_permanent(self):
@@ -638,14 +638,14 @@ class TestRenderer:
 
     def test_render_coordination_dependency(self):
         from src.renderer import render_constraint
-        c = CoordinationDependency(timestamp=4, role="field_side_p2", dependency="hazard_entry_rock", expected_action="hazard_response")
+        c = CoordinationDependency(timestamp=4, role="field_side_p2", dependency="hazard_type_A", expected_action="hazard_response")
         rendered = render_constraint(c)
         assert "field_side_p2" in rendered
-        assert "hazard_entry_rock" in rendered
+        assert "hazard_type_A" in rendered
 
     def test_render_optimization_criterion(self):
         from src.renderer import render_constraint
-        c = OptimizationCriterion(timestamp=5, objective="weather_rain", weight_shift="water_amplify_fire_reduce")
+        c = OptimizationCriterion(timestamp=5, objective="weather_raindance", weight_shift="weather_A")
         rendered = render_constraint(c)
-        assert "weather_rain" in rendered
-        assert "water_amplify" in rendered
+        assert "weather_raindance" in rendered
+        assert "weather_A" in rendered
