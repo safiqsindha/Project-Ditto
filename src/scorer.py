@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import math
-import pickle
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +26,7 @@ import numpy as np
 from scipy import stats
 
 from src.normalize import normalize_action
+from src.reference import ReferenceDistribution, extract_state_signature
 
 
 # ---------------------------------------------------------------------------
@@ -290,9 +290,9 @@ def score_all(
 
     Returns a comprehensive results dict suitable for JSON serialisation.
     """
-    # Load reference distribution
-    with open(dist_path, "rb") as f:
-        ref_dist = pickle.load(f)
+    # Load reference distribution (must use ReferenceDistribution.load, NOT pickle.load
+    # directly — the pickle file stores a payload dict, not the object itself)
+    ref_dist = ReferenceDistribution.load(dist_path)
 
     # Load all raw results
     results: list[dict] = []
@@ -334,15 +334,13 @@ def score_all(
             continue
 
         # Get reference distribution for this step
+        dist: dict[str, float] = {}
         try:
-            from src.reference import ReferenceDistribution, extract_state_signature
             sig = extract_state_signature(chain, cutoff_k)
             if sig is not None:
-                top_k, dist, backoff = ref_dist.lookup(sig)
-            else:
-                dist = {}
-        except Exception:
-            dist = {}
+                _top_k, dist, _backoff = ref_dist.lookup(sig)
+        except (KeyError, AttributeError, TypeError) as exc:
+            print(f"[scorer] lookup failed for chain_id={chain_id}: {exc}")
 
         # Layer 1
         l1 = score_layer1(model_action, dist)

@@ -159,6 +159,15 @@ def run_evaluation(
     """
     load_dotenv()
 
+    import os
+    if not dry_run and not os.environ.get("ANTHROPIC_API_KEY"):
+        print(
+            "[runner] ERROR: ANTHROPIC_API_KEY is not set.\n"
+            "  Add it to .env (see .env.example) or export it before running.\n"
+            "  Use --dry-run to test without an API key."
+        )
+        raise SystemExit(1)
+
     if model_name not in MODELS:
         raise ValueError(
             f"Unknown model_name {model_name!r}. Choose from: {list(MODELS)}"
