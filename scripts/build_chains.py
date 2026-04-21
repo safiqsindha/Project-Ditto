@@ -36,28 +36,6 @@ def _serialize_constraint(c) -> dict:
     return d
 
 
-def _extract_action_at_step(constraints, k: int) -> str:
-    """Generate an abstract action label from constraint context at step k."""
-    if k >= len(constraints):
-        k = len(constraints) - 1
-    c = constraints[k]
-    t = type(c).__name__
-
-    if t == "ToolAvailability" and c.state == "available":
-        return f"switch to {c.tool}"
-    elif t == "ResourceBudget" and c.resource.startswith("pp_"):
-        action = c.resource.replace("pp_", "")
-        return f"use {action} with active_unit"
-    elif t == "SubGoalTransition":
-        return f"adapt to {c.to_phase}"
-    else:
-        # Default: use the most recently tracked action
-        for prev in reversed(constraints[:k]):
-            if type(prev).__name__ == "ResourceBudget" and prev.resource.startswith("pp_"):
-                action = prev.resource.replace("pp_", "")
-                return f"use {action} with active_unit"
-        return "use action_1 with active_unit"
-
 
 def _find_valid_window(constraints, min_len: int = 20, max_len: int = 40) -> list | None:
     """
@@ -92,8 +70,11 @@ def process_match(record: dict, perspectives: list[str], seeds: list[int]) -> tu
     events = constraint_events(log)
 
     for perspective in perspectives:
-        # Translate full match
-        all_constraints = translate_match(events, perspective)
+        # Translate full match — skip if Pokémon count exceeds 6-per-player limit
+        try:
+            all_constraints = translate_match(events, perspective)
+        except ValueError:
+            continue
 
         # Asymmetric observability on full match
         obs_all = apply_asymmetric_observability(all_constraints, perspective)
@@ -103,9 +84,8 @@ def process_match(record: dict, perspectives: list[str], seeds: list[int]) -> tu
         if window is None:
             continue
 
-        # Compute cutoff K and action
+        # Compute cutoff K (half-chain)
         k = len(window) // 2
-        action = _extract_action_at_step(window, k)
 
         chain_id = f"{record['match_id']}_{perspective}"
         chain = {
@@ -114,7 +94,6 @@ def process_match(record: dict, perspectives: list[str], seeds: list[int]) -> tu
             "perspective": perspective,
             "constraints": window,
             "rendered": render_chain(window, perspective),
-            "action_at_step": action,
             "cutoff_k": k,
         }
         real_chains.append(chain)
@@ -123,7 +102,6 @@ def process_match(record: dict, perspectives: list[str], seeds: list[int]) -> tu
         for seed in seeds:
             sh = shuffle_chain(chain, seed)
             sh["rendered"] = render_chain(sh["constraints"], perspective)
-            sh["action_at_step"] = action
             shuffled_chains.append(sh)
 
     return real_chains, shuffled_chains

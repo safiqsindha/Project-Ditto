@@ -1,7 +1,10 @@
 """
 Translation layer T: converts raw Showdown BattleEvents into abstract Constraint objects.
 
-FROZEN after Session 3 (git tag T-v1.0-frozen).
+FROZEN after Session 3 (git tag T-v1.0-frozen → updated to T-v1.1-frozen in Fix 4).
+Fix 4 change: weather/terrain/hazard labels abstracted to weather_A..E, terrain_A..E,
+hazard_type_A..D so no domain vocabulary leaks through OptimizationCriterion/
+CoordinationDependency weight_shift fields.
 
 Design principles:
   1. Parametric   — the same function applied uniformly to all matches
@@ -106,34 +109,35 @@ _STATUS_SEVERITY: dict[str, float] = {
     "tox": 0.3,  # grows; tracked in TranslationContext
 }
 
-# Weight-shift descriptors for weather/terrain — domain-abstracted labels
+# Weight-shift descriptors for weather — fully generic labels (no domain vocabulary).
+# Labels are stable across matches (same weather type always gets the same letter).
 _WEATHER_SHIFT: dict[str, str] = {
-    "raindance":   "water_amplify_fire_reduce",
-    "sunnyday":    "fire_amplify_water_reduce",
-    "sandstorm":   "rock_steel_ground_buffer_others_chip",
-    "snow":        "ice_buffer_others_unaffected",
-    "hail":        "ice_buffer_others_chip",
+    "raindance":   "weather_A",
+    "sunnyday":    "weather_B",
+    "sandstorm":   "weather_C",
+    "snow":        "weather_D",
+    "hail":        "weather_D",  # same bucket as snow
     # aliases that Showdown may emit
-    "rain":        "water_amplify_fire_reduce",
-    "sun":         "fire_amplify_water_reduce",
-    "sand":        "rock_steel_ground_buffer_others_chip",
-    "none":        "neutral",
+    "rain":        "weather_A",
+    "sun":         "weather_B",
+    "sand":        "weather_C",
+    "none":        "weather_neutral",
 }
 
 _TERRAIN_SHIFT: dict[str, str] = {
-    "electricterrain": "electric_amplify_sleep_immunity_grounded",
-    "grassyterrain":   "grass_amplify_ground_reduce_grounded",
-    "mistyterrain":    "dragon_reduce_status_immunity_grounded",
-    "psychicterrain":  "psychic_amplify_priority_block_grounded",
-    "trickroom":       "speed_inversion_active",
+    "electricterrain": "terrain_A",
+    "grassyterrain":   "terrain_B",
+    "mistyterrain":    "terrain_C",
+    "psychicterrain":  "terrain_D",
+    "trickroom":       "terrain_E",
 }
 
-# Hazard dependency keys — domain-abstracted
+# Hazard dependency keys — fully generic labels
 _HAZARD_DEPENDENCY: dict[str, str] = {
-    "stealthrock":   "hazard_entry_rock",
-    "spikes":        "hazard_entry_spike",
-    "stickyweb":     "hazard_entry_web",
-    "toxicspikes":   "hazard_entry_toxic_spike",
+    "stealthrock":  "hazard_type_A",
+    "spikes":       "hazard_type_B",
+    "stickyweb":    "hazard_type_C",
+    "toxicspikes":  "hazard_type_D",
 }
 
 
@@ -190,8 +194,11 @@ class TranslationContext:
         if pokemon_name not in pmap:
             idx = len(pmap)
             if idx >= _MAX_UNITS:
-                # Overflow guard: reuse last slot
-                idx = _MAX_UNITS - 1
+                raise ValueError(
+                    f"Too many distinct Pokémon for player {player} in match "
+                    f"(seen {idx + 1}, max {_MAX_UNITS}). "
+                    f"Already mapped: {list(pmap.keys())}"
+                )
             label = _UNIT_LABELS[idx]
             pmap[pokemon_name] = label
             self._unit_rev[player][label] = pokemon_name

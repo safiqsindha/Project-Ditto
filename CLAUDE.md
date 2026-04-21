@@ -25,8 +25,10 @@ python scripts/acquire_data.py --source huggingface --out data/raw/
 # Build constraint chains from raw data
 python scripts/build_chains.py --data data/raw/ --out-real chains/real/ --out-shuffled chains/shuffled/
 
-# Build reference action distribution
-python scripts/build_reference.py build --chains chains/real/ --out data/reference_dist.pkl
+# Build reference action distribution (primary: from raw logs)
+python scripts/build_reference.py build-raw --raw data/raw/ --out data/reference_dist.pkl
+# Alt: build from chain files after build_chains.py has run
+# python scripts/build_reference.py build --chains chains/real/ --out data/reference_dist.pkl
 python scripts/build_reference.py check --dist data/reference_dist.pkl --chains chains/real/
 
 # Dry-run evaluation (no API key needed)
@@ -51,7 +53,7 @@ pytest tests/test_translation.py::TestSwitchPlayerSide  # single test class
 
 1. **`src/parser.py`** — parses raw Showdown protocol text into `BattleLog` / `BattleEvent`. `constraint_events()` filters to the 12 events that emit constraints. `filter_match()` applies Elo ≥ 1700, ≥ 15 turns, Gen 9 OU, `|win|` event present.
 
-2. **`src/translation.py`** — Translation function T (frozen at git tag `T-v1.0-frozen`). Converts `BattleEvent` objects into typed constraint objects via `translate_match(events, perspective)`. Six constraint types: `ResourceBudget`, `ToolAvailability`, `SubGoalTransition`, `InformationState`, `CoordinationDependency`, `OptimizationCriterion`. Pokémon names → `unit_A..unit_F`, moves → `action_1..action_4`. **Do not modify after the T-v1.0-frozen tag.**
+2. **`src/translation.py`** — Translation function T (frozen at git tag `T-v1.1-frozen`). Converts `BattleEvent` objects into typed constraint objects via `translate_match(events, perspective)`. Six constraint types: `ResourceBudget`, `ToolAvailability`, `SubGoalTransition`, `InformationState`, `CoordinationDependency`, `OptimizationCriterion`. Pokémon names → `unit_A..unit_F`, moves → `action_1..action_4`; weather → `weather_A..E`, terrain → `terrain_A..E`, hazards → `hazard_type_A..D`. **Do not modify after the T-v1.1-frozen tag.**
 
 3. **`src/observability.py`** — Asymmetric rendering: opponent units hidden until revealed, opponent HP bucketed to 0/25/50/75/100%.
 
@@ -71,7 +73,7 @@ pytest tests/test_translation.py::TestSwitchPlayerSide  # single test class
 
 ### Key invariants
 
-- **T is frozen.** `src/translation.py` and `src/renderer.py` must not change after the `T-v1.0-frozen` git tag. Any divergence must be recorded and reported.
+- **T is frozen.** `src/translation.py` and `src/renderer.py` must not change after the `T-v1.1-frozen` git tag. Any divergence must be recorded and reported.
 - **Scorer is blinded.** Run scoring in a separate session; the scorer never sees model identity, real/shuffled label, or seed.
 - **No Pokémon vocabulary in rendered chains.** Unit-tested via `check_pokemon_leakage()`.
 - **Cutoff K = len(constraints) // 2** (half-chain), unless overridden by `--cutoff-k`.
