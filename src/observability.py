@@ -31,31 +31,65 @@ def bucket_hp(amount: float) -> float:
     return 1.0
 
 
-def _opponent_player(perspective: str) -> str:
-    """Return the other player label."""
-    return "p2" if perspective == "p1" else "p1"
-
-
-def _unit_belongs_to_opponent(tool_or_resource: str, revealed: set[str], perspective: str) -> bool:
+def _find_opponent_reveal_indices(constraints: list[Constraint]) -> dict[str, int]:
     """
-    Determine if a tool/resource string references a unit that belongs to the opponent.
+    Return a mapping from opponent unit label to the index of its first InformationState
+    revelation in the constraint list.
 
-    Unit labels look like unit_A, unit_B, ... — the translation layer assigns them
-    independently per player, so we cannot infer ownership from the label alone.
-    We use the revealed set as the source of truth: any unit that has appeared in
-    an InformationState.observable_added is an opponent unit (the translator only
-    emits InformationState for opponent switches).
-
-    Additionally, we assume any unit referenced in ToolAvailability or ResourceBudget
-    that has ever appeared in observable_added is an opponent unit.
+    The translator emits InformationState only for opponent switch-ins, so every unit
+    that ever appears in InformationState.observable_added is an opponent unit.
     """
-    # Extract unit label from resource strings like "hp_unit_A", "status_unit_B",
-    # "boost_atk_unit_C", "pp_action_1" (pp is own), or bare "unit_A"
-    import re
-    m = re.search(r"(unit_[A-F])", tool_or_resource)
-    if m:
-        return m.group(1) in revealed
-    return False
+    first_reveal: dict[str, int] = {}
+    for i, c in enumerate(constraints):
+        if isinstance(c, InformationState):
+            for unit in c.observable_added:
+                if unit not in first_reveal:
+                    first_reveal[unit] = i
+    return first_reveal
+
+
+def _find_opponent_pre_reveal_ta_indices(
+    constraints: list[Constraint],
+    first_reveal: dict[str, int],
+) -> set[int]:
+    """
+    Identify the indices of ToolAvailability constraints that correspond to an
+    opponent unit's switch-in BEFORE that unit has been revealed.
+
+    The translator emits for an opponent switch:
+        [ToolAvailability(incoming, available), SubGoalTransition, InformationState(incoming)]
+    in that order (with an optional prior ToolAvailability(prev, unavailable) before).
+
+    We detect these 'pre-reveal TAs' by looking backwards from each InformationState:
+    the TA immediately preceding SubGoalTransition at the InformationState is the one
+    to suppress.
+    """
+    suppress_indices: set[int] = set()
+
+    for i, c in enumerate(constraints):
+        if not isinstance(c, InformationState):
+            continue
+        revealed_units = c.observable_added
+        if not revealed_units:
+            continue
+
+        # Walk backwards from i to find the ToolAvailability that triggered this reveal.
+        # Pattern: ..., TA(incoming avail), [TA(prev unavail),] SubGoalTransition, InformationState
+        # We look at i-1 and i-2 for SubGoalTransition, then the TA before that.
+        # In practice the translator emits: TA_avail, SubGoalTransition, InformationState
+        # (prev TA_unavail is emitted before TA_avail)
+        j = i - 1
+        while j >= 0 and isinstance(constraints[j], SubGoalTransition):
+            j -= 1
+        # j now points to the ToolAvailability for the incoming unit (available)
+        if j >= 0 and isinstance(constraints[j], ToolAvailability):
+            ta = constraints[j]
+            if ta.tool in revealed_units and ta.state == "available":
+                # This TA is the opponent's pre-reveal switch-in; suppress if before reveal
+                if j < first_reveal.get(ta.tool, i):
+                    suppress_indices.add(j)
+
+    return suppress_indices
 
 
 def apply_asymmetric_observability(
@@ -73,40 +107,42 @@ def apply_asymmetric_observability(
       - ResourceBudget(status_*): keep as-is (visible on battle screen)
       - InformationState: keep (it's what makes opponent units get revealed)
     """
-    # Track which opponent unit labels have been revealed via InformationState
-    # or ToolAvailability events (the translator emits InformationState on opponent switch)
-    revealed_opponent_units: set[str] = set()
+    # Two-pass approach to handle the label collision between own and opponent units.
+    # Both players use labels unit_A..unit_F, so we cannot distinguish own from
+    # opponent purely by label. Instead:
+    #   1. Pre-scan to find which indices hold pre-reveal opponent switch-in TAs.
+    #   2. Collect all units that appear in InformationState (= all opponent units).
+    #   3. Apply suppression and bucketing rules.
+
+    first_reveal = _find_opponent_reveal_indices(constraints)
+    opponent_units: set[str] = set(first_reveal.keys())
+    suppress_ta_indices = _find_opponent_pre_reveal_ta_indices(constraints, first_reveal)
 
     result: list[Constraint] = []
 
-    for c in constraints:
+    for i, c in enumerate(constraints):
         if isinstance(c, InformationState):
-            # Always keep InformationState; also record revealed units
-            for unit in c.observable_added:
-                revealed_opponent_units.add(unit)
+            # Always keep; also no modification needed
             result.append(c)
 
         elif isinstance(c, ToolAvailability):
-            # Check if this tool is an opponent unit
-            if _unit_belongs_to_opponent(c.tool, revealed_opponent_units, perspective):
-                # Only emit if revealed
-                if c.tool in revealed_opponent_units:
-                    result.append(c)
-                # else suppress
-            else:
-                # Could be own unit or a non-unit tool — keep it
-                # Also: if this tool is a new unit we haven't seen, check if it
-                # appears in InformationState (opponent) or not (own)
-                # At this point any unit NOT in revealed_opponent_units is treated as own
-                result.append(c)
+            if i in suppress_ta_indices:
+                # Pre-reveal opponent switch-in TA — suppress
+                continue
+            # Post-reveal or own-unit TA: keep as-is
+            result.append(c)
 
         elif isinstance(c, ResourceBudget):
             resource = c.resource
-            # Determine if this is an opponent unit's resource
-            if _unit_belongs_to_opponent(resource, revealed_opponent_units, perspective):
-                # Opponent unit: apply rules
+
+            # Extract unit label from resource string (e.g. "hp_unit_A" -> "unit_A")
+            import re
+            m = re.search(r"(unit_[A-F])", resource)
+            unit_label = m.group(1) if m else None
+
+            if unit_label and unit_label in opponent_units:
                 if resource.startswith("hp_"):
-                    # Bucket HP
+                    # Bucket opponent HP
                     bucketed = bucket_hp(c.amount)
                     result.append(ResourceBudget(
                         timestamp=c.timestamp,
@@ -116,19 +152,18 @@ def apply_asymmetric_observability(
                         recover_in=c.recover_in,
                     ))
                 elif resource.startswith("status_"):
-                    # Keep as-is (visible on battle screen)
+                    # Status is visible on screen — keep as-is
                     result.append(c)
                 else:
-                    # Other opponent resources (boost_*, pp_*): suppress
-                    # These are not directly observable before the unit acts
+                    # Other opponent resources (boost_*, etc.) — suppress
                     pass
             else:
-                # Own unit or non-unit resource: full visibility
+                # Own unit resource or non-unit resource — full visibility
                 result.append(c)
 
         else:
             # SubGoalTransition, CoordinationDependency, OptimizationCriterion:
-            # these are field-level or own-player events — always visible
+            # field-level or own-player events — always visible
             result.append(c)
 
     return result
