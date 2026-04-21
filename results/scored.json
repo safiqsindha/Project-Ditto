@@ -1,0 +1,71 @@
+{
+  "per_model": {
+    "haiku": {
+      "layer1": {
+        "error": "empty sample"
+      },
+      "layer2": {
+        "real_mean": 0.0,
+        "shuffled_mean": 0.0,
+        "gap": 0.0,
+        "t_stat": NaN,
+        "p_value": NaN,
+        "significant_05": false,
+        "ci_real_95": [
+          NaN,
+          NaN
+        ]
+      },
+      "outcome_tier": "null"
+    }
+  },
+  "n_results": 10,
+  "per_subset": {
+    "haiku": {
+      "length_bucket:long_33_40_real_l1": [
+        0,
+        0,
+        0
+      ],
+      "composition:resource_dominated_real_l1": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "archetype:stall_real_l1": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "length_bucket:long_33_40_shuffled_l1": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "composition:resource_dominated_shuffled_l1": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "archetype:stall_shuffled_l1": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "length_bucket:short_20_25_real_l1": [
+        0,
+        0
+      ]
+    }
+  }
+}
