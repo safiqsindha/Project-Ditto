@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ipynb_checkpoints/
+data/reference_dist.pkl
+results/raw/
+results/blinded/
+# Generated chain data — reproduce with scripts/build_chains.py
+chains/real/*.jsonl
+chains/shuffled/*.jsonl
