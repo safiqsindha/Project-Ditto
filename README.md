@@ -2,6 +2,8 @@
 
 An evaluation-only research prototype testing whether frontier LLMs reason better on real Pokémon Showdown battle telemetry than on shuffled versions of the same data.
 
+Follow-up work: Project Ditto v2 — applying this methodology to programming-task trajectories.
+
 ## Hypothesis
 
 Real battle chains have causal consistency (HP trajectories, PP depletion, hidden-information reveals) that models can exploit. Shuffled chains violate this consistency. A real-vs-shuffled gap ≥ 0.05 on top-3 action-match rate (p < 0.05) is the pre-registered success threshold.
