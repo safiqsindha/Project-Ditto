@@ -169,46 +169,39 @@ def extract_state_signature(chain: dict, step_idx: int) -> StateSignature | None
     # the chain's perspective field tells us which side is "ours".
 
     perspective = chain.get("perspective", "p1")
-    opponent = "p2" if perspective == "p1" else "p1"
 
-    # Track most-recent available tool for focal and opponent, keyed by
-    # a side tag embedded in the tool name if present, or positionally.
-    # Since the chain constraints are produced by a single TranslationContext
-    # (one perspective), we may not have opponent unit labels unless they were
-    # observed. We look for ToolAvailability constraints and accept any label.
-
-    # Most recent available tool (we track separately for p1 and p2 if the
-    # chain embeds "p1_unit_A" style names, otherwise fall back to order).
-    p1_active: str | None = None
-    p2_active: str | None = None
-
-    for c in reversed(prior):
-        if c.get("type") != "ToolAvailability":
-            continue
-        if c.get("state") != "available":
-            continue
-        tool = c.get("tool", "")
-        # Chains may encode player prefix: "p1_unit_A" or just "unit_A"
-        if tool.startswith("p1_") and p1_active is None:
-            p1_active = tool[3:]  # strip "p1_"
-        elif tool.startswith("p2_") and p2_active is None:
-            p2_active = tool[3:]
-        elif not tool.startswith("p"):
-            # No player prefix — treat as focal player's unit
-            if p1_active is None:
-                p1_active = tool
-
-    # If we still don't have both sides, fall back to the focal player only
-    if p1_active is None:
-        p1_active = "unit_unknown"
-    if p2_active is None:
-        p2_active = "unit_unknown"
-
-    if perspective == "p2":
-        # Swap so active_pair is always (focal, opponent)
-        active_pair = (p2_active, p1_active)
+    # Preferred path: build_chains.py records (p1_active, p2_active) after every
+    # emitted constraint. If present, use it directly — this is the only reliable
+    # way to recover the opponent's active unit from a single-perspective chain.
+    apbs = chain.get("active_pair_by_step")
+    if apbs is not None and step_idx < len(apbs):
+        pair = apbs[step_idx]
+        p1_u = pair[0] if pair[0] else "unit_unknown"
+        p2_u = pair[1] if pair[1] else "unit_unknown"
+        active_pair = (p2_u, p1_u) if perspective == "p2" else (p1_u, p2_u)
     else:
-        active_pair = (p1_active, p2_active)
+        # Legacy fallback for chains built before active_pair_by_step was added,
+        # or for synthetic test chains that don't carry it.
+        p1_active: str | None = None
+        p2_active: str | None = None
+        for c in reversed(prior):
+            if c.get("type") != "ToolAvailability":
+                continue
+            if c.get("state") != "available":
+                continue
+            tool = c.get("tool", "")
+            if tool.startswith("p1_") and p1_active is None:
+                p1_active = tool[3:]
+            elif tool.startswith("p2_") and p2_active is None:
+                p2_active = tool[3:]
+            elif not tool.startswith("p"):
+                if p1_active is None:
+                    p1_active = tool
+        if p1_active is None:
+            p1_active = "unit_unknown"
+        if p2_active is None:
+            p2_active = "unit_unknown"
+        active_pair = (p2_active, p1_active) if perspective == "p2" else (p1_active, p2_active)
 
     # -----------------------------------------------------------------------
     # HP brackets for active units
@@ -239,8 +232,11 @@ def extract_state_signature(chain: dict, step_idx: int) -> StateSignature | None
             unit_label = resource[7:]
             status_map[unit_label] = c.get("amount", 0.0)
 
+    # Format must match build_reference.py raw-path: "{unit}_status" (a boolean
+    # flag). The chain previously encoded severity (e.g. "unit_A_0.50") which
+    # never matched the raw-path keys.
     status_effects: frozenset = frozenset(
-        f"{unit}_{amt:.2f}" for unit, amt in status_map.items() if amt > 0
+        f"{unit}_status" for unit, amt in status_map.items() if amt > 0
     )
 
     # -----------------------------------------------------------------------

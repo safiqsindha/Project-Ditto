@@ -122,6 +122,61 @@ def acquire_from_pokechamp(pokechamp_dir: Path, out_dir: Path, target: int = 250
     return kept
 
 
+def acquire_from_parquet(parquet_files: list[Path], out_dir: Path, target: int = 2500):
+    """Load from local HolidayOugi-style parquet shards (id, format, players, log, ...)."""
+    import pyarrow.parquet as pq
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    kept = 0
+    seen = 0
+    chunk = 0
+    batch: list[dict] = []
+
+    for parquet_path in parquet_files:
+        print(f"Reading {parquet_path} ...")
+        pf = pq.ParquetFile(parquet_path)
+        for rg_idx in range(pf.num_row_groups):
+            df = pf.read_row_group(rg_idx, columns=["id", "log"]).to_pandas()
+            for _, row in df.iterrows():
+                seen += 1
+                log_text = row["log"] or ""
+                if not log_text:
+                    continue
+                log = parse_showdown_log(log_text, match_id=str(row["id"]))
+                if not filter_match(log):
+                    continue
+
+                batch.append({
+                    "match_id": log.match_id,
+                    "format": log.format,
+                    "players": log.players,
+                    "rating": log.rating,
+                    "winner": log.winner,
+                    "log": log_text,
+                })
+                kept += 1
+
+                if len(batch) >= 1000:
+                    chunk += 1
+                    _flush_batch(batch, out_dir, chunk)
+                    batch = []
+                    print(f"  Kept {kept} / scanned {seen}")
+
+                if kept >= target:
+                    break
+            if kept >= target:
+                break
+        if kept >= target:
+            break
+
+    if batch:
+        chunk += 1
+        _flush_batch(batch, out_dir, chunk)
+
+    print(f"Done. Kept {kept} matches from {seen} scanned.")
+    return kept
+
+
 def _flush_batch(batch: list[dict], out_dir: Path, chunk_idx: int):
     path = out_dir / f"matches_{chunk_idx:04d}.jsonl"
     with open(path, "w") as f:
@@ -132,15 +187,22 @@ def _flush_batch(batch: list[dict], out_dir: Path, chunk_idx: int):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--source", choices=["huggingface", "pokechamp"], default="huggingface")
+    parser.add_argument("--source", choices=["huggingface", "pokechamp", "parquet"], default="huggingface")
     parser.add_argument("--out", type=Path, default=Path("data/raw"))
     parser.add_argument("--target", type=int, default=2500, help="Target number of filtered matches")
     parser.add_argument("--pokechamp-dir", type=Path, default=None)
     parser.add_argument("--hf-token", type=str, default=None)
+    parser.add_argument("--parquet-files", type=Path, nargs="+", default=None,
+                        help="One or more parquet shards (HolidayOugi schema: id, format, players, log, ...)")
     args = parser.parse_args()
 
     if args.source == "huggingface":
         n = acquire_from_huggingface(args.out, args.target, args.hf_token)
+    elif args.source == "parquet":
+        if not args.parquet_files:
+            print("--parquet-files required for parquet source")
+            sys.exit(1)
+        n = acquire_from_parquet(args.parquet_files, args.out, args.target)
     else:
         if not args.pokechamp_dir:
             print("--pokechamp-dir required for pokechamp source")

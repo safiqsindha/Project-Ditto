@@ -1,7 +1,7 @@
-source: synthetic
-generator: scripts/generate_synthetic_data.py
-n: 2500
+source: real_replays_parquet
+origin: HolidayOugi/pokemon-showdown-replays (Gen 9 OU) — local parquet shards
+files: parts 7, 8, 9, 11 from /Users/safiqsindha/Downloads/Gen9 OU/
+filter: Gen 9 OU, both-player Elo >= 1700, >= 15 turns, |win| event present
+kept: 2500 / 68418 scanned
+acquired_via: python scripts/acquire_data.py --source parquet --parquet-files ...
 date: 2026-04-21
-note: Generated offline with no internet access. Real data requires running:
-  python scripts/acquire_data.py --source huggingface --out data/raw/ --target 2500
-WARNING: Do NOT use these for publication-quality evaluation. Pass --allow-synthetic to runner.py to bypass this check during development.

@@ -23,11 +23,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.filter import is_valid_chain
-from src.observability import apply_asymmetric_observability
+from src.observability import apply_asymmetric_observability_with_indices
 from src.parser import constraint_events, filter_match, parse_showdown_log
 from src.renderer import render_chain
 from src.shuffler import shuffle_chain
-from src.translation import translate_match
+from src.translation import TranslationContext, translate_event
 
 
 def _serialize_constraint(c) -> dict:
@@ -37,16 +37,13 @@ def _serialize_constraint(c) -> dict:
 
 
 
-def _find_valid_window(constraints, min_len: int = 20, max_len: int = 40) -> list | None:
+def _find_valid_window(constraints, min_len: int = 20, max_len: int = 40) -> tuple[list, int] | None:
     """
     Find the earliest contiguous window of length 20-40 that passes is_valid_chain.
-    Tries windows at step=10, 20, 30 ... to spread across the match.
-    Returns the window (list of constraints) or None if none found.
+    Returns (window, start_idx) or None.
     """
     n = len(constraints)
-    # Try different window lengths starting from max down to min
     for win_len in range(max_len, min_len - 1, -1):
-        # Try starting positions: quarter-point, third-point, half-point, early
         starts = [n // 4, n // 3, 10, 0, n // 2 - win_len // 2]
         for start in sorted(set(max(0, s) for s in starts)):
             end = start + win_len
@@ -54,7 +51,7 @@ def _find_valid_window(constraints, min_len: int = 20, max_len: int = 40) -> lis
                 continue
             window = constraints[start:end]
             if is_valid_chain(window):
-                return window
+                return window, start
     return None
 
 
@@ -70,19 +67,34 @@ def process_match(record: dict, perspectives: list[str], seeds: list[int]) -> tu
     events = constraint_events(log)
 
     for perspective in perspectives:
-        # Translate full match — skip if Pokémon count exceeds 6-per-player limit
+        # Manual translate loop so we can record (p1_active, p2_active) after each
+        # emitted constraint — needed for signature extraction (bug fix: opponent
+        # units otherwise unrecoverable from chain tool names).
+        ctx = TranslationContext(perspective=perspective)
+        all_constraints = []
+        active_pair_all: list[tuple[str | None, str | None]] = []
         try:
-            all_constraints = translate_match(events, perspective)
+            for event in events:
+                for c in translate_event(event, ctx):
+                    all_constraints.append(c)
+                    active_pair_all.append(
+                        (ctx.active_unit.get("p1"), ctx.active_unit.get("p2"))
+                    )
         except ValueError:
             continue
 
-        # Asymmetric observability on full match
-        obs_all = apply_asymmetric_observability(all_constraints, perspective)
+        # Asymmetric observability on full match — keep index alignment
+        obs_all, kept_idx = apply_asymmetric_observability_with_indices(
+            all_constraints, perspective
+        )
+        active_pair_obs = [active_pair_all[i] for i in kept_idx]
 
         # Extract a valid 20-40 constraint window
-        window = _find_valid_window(obs_all)
-        if window is None:
+        found = _find_valid_window(obs_all)
+        if found is None:
             continue
+        window, start_idx = found
+        window_active_pairs = active_pair_obs[start_idx:start_idx + len(window)]
 
         # Compute cutoff K (half-chain)
         k = len(window) // 2
@@ -95,6 +107,7 @@ def process_match(record: dict, perspectives: list[str], seeds: list[int]) -> tu
             "constraints": window,
             "rendered": render_chain(window, perspective),
             "cutoff_k": k,
+            "active_pair_by_step": window_active_pairs,
         }
         real_chains.append(chain)
 

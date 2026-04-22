@@ -23,6 +23,7 @@ from src.prompt_builder import PROMPT_VERSION, SYSTEM_PROMPT, build_prompt, cuto
 
 MODELS: dict[str, str] = {
     "haiku": "claude-haiku-4-5-20251001",
+    "sonnet": "claude-sonnet-4-6",
     "opus": "claude-opus-4-7",
 }
 
@@ -54,6 +55,7 @@ def _call_api_with_backoff(
     client: anthropic.Anthropic,
     model_id: str,
     user_message: str,
+    temperature: float = 0.0,
 ) -> str:
     """Call the Messages API with exponential backoff on rate-limit errors.
 
@@ -63,6 +65,9 @@ def _call_api_with_backoff(
         client:       Initialised Anthropic client.
         model_id:     Exact model string to use.
         user_message: The user-turn content.
+        temperature:  Sampling temperature. 0.0 for deterministic (pre-reg primary);
+                      >0 introduces real stochasticity so different eval seeds produce
+                      different responses (multi-seed variance study).
 
     Returns:
         The text content of the first TextBlock in the response.
@@ -81,7 +86,7 @@ def _call_api_with_backoff(
             response = client.messages.create(
                 model=model_id,
                 max_tokens=50,
-                temperature=0.0,
+                temperature=temperature,
                 system=SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_message}],
             )
@@ -139,6 +144,7 @@ def run_evaluation(
     cutoff_k: int | None = None,
     output_dir: Path = Path("results/raw"),
     dry_run: bool = False,
+    temperature: float = 0.0,
 ) -> dict:
     """Run one evaluation on one chain with one model + seed.
 
@@ -157,7 +163,7 @@ def run_evaluation(
         A dict with keys: chain_id, model, seed, cutoff_k, response,
         prompt_version.
     """
-    load_dotenv()
+    load_dotenv(override=True)
 
     import os
     if not dry_run and not os.environ.get("ANTHROPIC_API_KEY"):
@@ -216,7 +222,7 @@ def run_evaluation(
     # Call the API
     # ------------------------------------------------------------------
     client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
-    response_text = _call_api_with_backoff(client, model_id, user_message)
+    response_text = _call_api_with_backoff(client, model_id, user_message, temperature=temperature)
 
     # ------------------------------------------------------------------
     # Assemble result
@@ -228,6 +234,7 @@ def run_evaluation(
         "cutoff_k": cutoff_k,
         "response": response_text,
         "prompt_version": PROMPT_VERSION,
+        "temperature": temperature,
     }
 
     # ------------------------------------------------------------------
@@ -289,6 +296,7 @@ def run_all(
     dry_run: bool = False,
     n: int | None = None,
     allow_synthetic: bool = False,
+    temperature: float = 0.0,
 ) -> list[dict]:
     """Run evaluations for every chain in *chains_dir* with the given model.
 
@@ -323,6 +331,7 @@ def run_all(
             seed=seed,
             output_dir=output_dir,
             dry_run=dry_run,
+            temperature=temperature,
         )
         results.append(result)
 
@@ -379,6 +388,14 @@ if __name__ == "__main__":
         action="store_true",
         help="Allow evaluations on synthetic data (skips SOURCE.txt check).",
     )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Sampling temperature (default 0.0, deterministic pre-reg primary). "
+             "Set >0 so different eval seeds produce different responses "
+             "(multi-seed variance study).",
+    )
 
     args = parser.parse_args()
 
@@ -390,6 +407,7 @@ if __name__ == "__main__":
         dry_run=args.dry_run,
         n=args.n,
         allow_synthetic=args.allow_synthetic,
+        temperature=args.temperature,
     )
 
     print(f"\n[runner] Completed {len(results)} evaluations.")

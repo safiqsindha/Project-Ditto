@@ -56,10 +56,12 @@ def shuffle_chain(chain: dict, seed: int) -> dict:
     original_timestamps = _get_timestamps(original_constraints)
     sorted_timestamps = sorted(original_timestamps)
 
-    # Permute the constraints
+    # Permute the constraints via an explicit permutation so we can apply the
+    # same permutation to any parallel per-step metadata (e.g. active_pair_by_step).
     rng = random.Random(seed)
-    shuffled_constraints = list(original_constraints)
-    rng.shuffle(shuffled_constraints)
+    perm = list(range(len(original_constraints)))
+    rng.shuffle(perm)
+    shuffled_constraints = [original_constraints[i] for i in perm]
 
     # Re-assign timestamps in sorted order so the sequence is non-decreasing
     reassigned: list[Constraint] = []
@@ -73,6 +75,9 @@ def shuffle_chain(chain: dict, seed: int) -> dict:
     shuffled_chain["chain_id"] = f"{original_id}_shuffled_{seed}"
     shuffled_chain["match_id"] = chain["match_id"]
     shuffled_chain["constraints"] = reassigned
+    if "active_pair_by_step" in chain:
+        orig_pairs = chain["active_pair_by_step"]
+        shuffled_chain["active_pair_by_step"] = [orig_pairs[i] for i in perm]
 
     # The rendered field and action_at_step will be (re-)computed by the pipeline
     # based on the shuffled constraints, so we don't copy them blindly from the original.

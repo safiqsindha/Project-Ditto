@@ -92,6 +92,59 @@ def _find_opponent_pre_reveal_ta_indices(
     return suppress_indices
 
 
+def apply_asymmetric_observability_with_indices(
+    constraints: list[Constraint],
+    perspective: str,
+) -> tuple[list[Constraint], list[int]]:
+    """Same as apply_asymmetric_observability, but also return the list of
+    original indices that survived the filter (aligned with the returned
+    constraint list). Used by build_chains to track parallel per-constraint
+    metadata (e.g. active_pair) through the observability step.
+    """
+    first_reveal = _find_opponent_reveal_indices(constraints)
+    opponent_units: set[str] = set(first_reveal.keys())
+    suppress_ta_indices = _find_opponent_pre_reveal_ta_indices(constraints, first_reveal)
+
+    result: list[Constraint] = []
+    kept_indices: list[int] = []
+
+    for i, c in enumerate(constraints):
+        kept_c: Constraint | None
+
+        if isinstance(c, InformationState):
+            kept_c = c
+        elif isinstance(c, ToolAvailability):
+            kept_c = None if i in suppress_ta_indices else c
+        elif isinstance(c, ResourceBudget):
+            resource = c.resource
+            import re
+            m = re.search(r"(unit_[A-F])", resource)
+            unit_label = m.group(1) if m else None
+            if unit_label and unit_label in opponent_units:
+                if resource.startswith("hp_"):
+                    kept_c = ResourceBudget(
+                        timestamp=c.timestamp,
+                        resource=c.resource,
+                        amount=bucket_hp(c.amount),
+                        decay=c.decay,
+                        recover_in=c.recover_in,
+                    )
+                elif resource.startswith("status_"):
+                    kept_c = c
+                else:
+                    kept_c = None
+            else:
+                kept_c = c
+        else:
+            kept_c = c
+
+        if kept_c is not None:
+            result.append(kept_c)
+            kept_indices.append(i)
+
+    return result, kept_indices
+
+
 def apply_asymmetric_observability(
     constraints: list[Constraint],
     perspective: str,
