@@ -8,6 +8,22 @@ Follow-up work: Project Ditto v2 — applying this methodology to programming-ta
 
 Real battle chains have causal consistency (HP trajectories, PP depletion, hidden-information reveals) that models can exploit. Shuffled chains violate this consistency. A real-vs-shuffled gap ≥ 0.05 on top-3 action-match rate (p < 0.05) is the pre-registered success threshold.
 
+## Methodology Correction (April 2026)
+
+Post-hoc methodological review identified that the original scoring used unpaired statistical tests (two-sample proportion z-test for Layer 1, Welch's t-test for Layer 2) on data that is inherently paired — each real chain has corresponding shuffled variants produced from the same source match. The review also identified the absence of multiple-comparisons correction across the two primary model cells.
+
+Corrected analysis applies McNemar's test (Layer 1), paired t-test (Layer 2), and Bonferroni correction across the two primary cells (Haiku, Sonnet). The corrected analysis preserves both published findings:
+
+- **Sonnet 4.6:** gap 0.206, Bonferroni-corrected p ≪ 10⁻²¹² (strong_positive, unchanged)
+- **Haiku 4.5:** gap 0.066, Bonferroni-corrected p ≪ 10⁻²⁵ (moderate_positive, unchanged)
+
+Both findings clear the pre-registered minimum publishable threshold by substantial margins. The methodology correction does not change the qualitative or quantitative headline of this study; it provides statistically appropriate inference for paired data.
+
+Implementation: [`src/scorer_corrected.py`](src/scorer_corrected.py)  
+Full comparison: [`CORRECTED_SCORING.md`](CORRECTED_SCORING.md)
+
+---
+
 ## Quick start
 
 ```bash

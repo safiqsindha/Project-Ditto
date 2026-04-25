@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-04-25
+
+### Added
+
+**Session 9/10 — Methodology correction disclosure**
+- `src/scorer_corrected.py` — corrected scorer applying McNemar's test (Layer 1), paired t-test (Layer 2), and Bonferroni correction across 2 primary cells
+- `results/scored_corrected.json` — output of corrected scorer
+- `CORRECTED_SCORING.md` — full side-by-side comparison of original and corrected numbers
+
+**Session 10 — Public-facing disclosure**
+- `README.md` — added "Methodology Correction (April 2026)" section with corrected numbers and links to `CORRECTED_SCORING.md`
+- `RESULTS.md` — added correction note at top of document; updated headline numbers section to show original and corrected numbers side by side
+
+A post-hoc review identified that `src/scorer.py` applied unpaired tests (two-sample proportion z-test, Welch's t-test) to inherently paired data, and omitted multiple-comparisons correction. Corrected analysis uses McNemar's test, paired t-test, and Bonferroni correction (n=2). Both published findings are preserved: Haiku gap 0.066 (published 0.059), Sonnet gap 0.206 (published 0.201); outcome tiers unchanged. See [`CORRECTED_SCORING.md`](CORRECTED_SCORING.md).
+
+The original `src/scorer.py` is retained unmodified for reproducibility of the published numbers.
+
 ## [0.1.0] — 2026-04-21
 
 ### Added

@@ -2,6 +2,8 @@
 
 **Status:** Primary hypothesis confirmed — `strong_positive` on Claude Sonnet 4.6, `moderate_positive` on Claude Haiku 4.5. Per the pre-registered decision rule (CLAUDE.md §7, "on at least one model"), the result is publishable. Replicated across two additional seeds at temperature 0.5 (§"Multi-seed variance study"); outcome tiers are identical across all three conditions.
 
+> **Methodology correction (2026-04):** A post-hoc review identified that the original scorer applied unpaired statistical tests to inherently paired data and omitted multiple-comparisons correction. Corrected scoring (McNemar's test, paired t-test, Bonferroni n=2) preserves both published findings. Corrected gaps: Haiku 0.066 (published 0.059), Sonnet 0.206 (published 0.201). Outcome tiers unchanged. See [`CORRECTED_SCORING.md`](CORRECTED_SCORING.md) for the full side-by-side comparison.
+
 **Date:** 2026-04-21  
 **Seeds:** 42 (T = 0 primary); 1337, 7919 (T = 0.5 variance study)  
 **Models:** `claude-haiku-4-5-20251001`, `claude-sonnet-4-6`  
@@ -11,7 +13,7 @@
 
 ## TL;DR
 
-On both frontier models tested, Claude's top-3 action-match rate is **higher on real constraint chains than on shuffled controls** at high statistical significance. Sonnet shows a 20.1-percentage-point gap, clearing the pre-registered `strong_positive` threshold (gap ≥ 0.08, p < 0.01). Haiku shows a 5.9-point gap, clearing the primary Layer 1 threshold (gap ≥ 0.05, p < 0.05) but falling short of Layer 2's 0.04-point composite threshold.
+On both frontier models tested, Claude's top-3 action-match rate is **higher on real constraint chains than on shuffled controls** at high statistical significance. Sonnet shows a 20.1-percentage-point gap (corrected: 20.6 pp), clearing the pre-registered `strong_positive` threshold (gap ≥ 0.08, p < 0.01). Haiku shows a 5.9-point gap (corrected: 6.6 pp), clearing the primary Layer 1 threshold (gap ≥ 0.05, p < 0.05) but falling short of Layer 2's 0.04-point composite threshold.
 
 The finding supports the precondition that motivated the experiment: real battle telemetry carries causal structure (HP trajectories, PP depletion, hidden-info reveals) that frontier LLMs can exploit and that shuffling destroys.
 
@@ -19,12 +21,25 @@ The finding supports the precondition that motivated the experiment: real battle
 
 ## Headline Numbers (Layer 1, primary)
 
+### Original numbers (two-sample proportion z-test, unpaired)
+
 | Model | Real top-3 | Shuffled top-3 | **Gap** | z | p | n_real | n_shuffled |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Haiku 4.5 | 0.3023 | 0.2432 | **+0.0591** | 7.52 | ≈ 0 | 4,260 | 11,552 |
 | **Sonnet 4.6** | **0.4453** | 0.2447 | **+0.2006** | 24.45 | ≈ 0 | 4,260 | 11,552 |
 
 p-values reported as ≈ 0 because the two-sample proportion-test statistic is beyond the double-precision tail (both z-scores correspond to p ≪ 10⁻¹⁰).
+
+### Corrected numbers (McNemar's test, paired, Bonferroni n=2)
+
+| Model | Original gap | Original p | Corrected gap | Bonferroni p | Outcome tier |
+|---|---:|---|---:|---|---|
+| Haiku 4.5 | 0.059 | <0.001 | **0.066** | ≪10⁻²⁵ | moderate_positive (unchanged) |
+| **Sonnet 4.6** | **0.201** | <0.001 | **0.206** | ≪10⁻²¹² | strong_positive (unchanged) |
+
+The corrected analysis pairs each real-chain evaluation with its corresponding shuffled-chain evaluations by `(chain_id, eval_seed)`, enforces symmetric reference-miss filtering (a pair is included only when both real and shuffled obtained a reference lookup), and applies Bonferroni correction across the two primary model cells. Corrected gaps are slightly larger than original because the symmetric filter excludes a disproportionate share of shuffled-only reference misses — consistent with the asymmetric miss-rate finding in §"Robustness check" below.
+
+No cell changed outcome tier, significance status, or direction. Both findings clear the pre-registered minimum publishable threshold under both uncorrected and Bonferroni-corrected tests. See [`CORRECTED_SCORING.md`](CORRECTED_SCORING.md) for the complete side-by-side comparison and [`src/scorer_corrected.py`](src/scorer_corrected.py) for the implementation.
 
 ## Layer 2 (legality × optimality composite)
 
